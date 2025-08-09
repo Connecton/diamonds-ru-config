@@ -16,16 +16,12 @@ jobs:
     steps:
       - name: Debug payload
         run: |
-          echo "client_payload:" 
-          cat "$GITHUB_EVENT_PATH"
           echo "artifact_url: ${{ github.event.client_payload.artifact_url }}"
 
       - name: Check artifact_url
         run: |
-          if [ -z "${{ github.event.client_payload.artifact_url }}" ]; then
-            echo "::error::artifact_url is empty; ensure Repo A sends repository_dispatch with client_payload.artifact_url"
-            exit 1
-          fi
+          test -n "${{ github.event.client_payload.artifact_url }}" \
+            || (echo "::error::artifact_url is empty" && exit 1)
 
       - name: Download Base64 bundle
         run: |
