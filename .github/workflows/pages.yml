@@ -35,6 +35,21 @@ jobs:
           mkdir -p docs
           unzip -q dist.zip -d docs
 
+      - name: Add .nojekyll and minimal index.html
+        run: |
+          touch docs/.nojekyll
+          if [ ! -f docs/index.html ]; then
+            cat > docs/index.html <<'HTML'
+          <!doctype html><meta charset="utf-8"><title>Diamonds Config CDN</title>
+          <p>OK.</p>
+          HTML
+          fi
+
+      - name: Show files to be deployed
+        run: |
+          echo "---- tree docs (max 2 levels) ----"
+          find docs -maxdepth 2 -type f -print
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
