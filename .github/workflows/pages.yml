@@ -1,0 +1,33 @@
+name: Deploy Pages from artifact
+
+on:
+  repository_dispatch:
+    types: [publish-cohorts]
+  workflow_dispatch:
+
+permissions:
+  pages: write
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download ZIP from Repo A payload
+        run: |
+          curl -fsSL "${{ github.event.client_payload.artifact_url }}" -o dist.zip
+
+      - name: Unzip into docs/
+        run: |
+          rm -rf docs
+          mkdir -p docs
+          unzip -q dist.zip -d docs
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
