@@ -28,6 +28,29 @@ jobs:
           curl -fsSL "${{ github.event.client_payload.artifact_url }}" -o dist.zip.b64
           test -s dist.zip.b64
 
+      - name: Extract GIST_ID from artifact_url
+        id: extract
+        run: |
+          url="${{ github.event.client_payload.artifact_url }}"
+          # Works with both formats:
+          #  - https://gist.githubusercontent.com/<user>/<id>/raw/dist.zip.b64
+          #  - https://gist.githubusercontent.com/<id>/raw/dist.zip.b64
+          id="$(echo "$url" | sed -E 's#https?://gist.githubusercontent.com/([^/]+/)?([0-9a-fA-F]+).*#\2#')"
+          if [ -z "$id" ] || [ "$id" = "$url" ]; then
+            echo "::warning ::Could not parse Gist ID from artifact_url"
+          fi
+          echo "gist_id=$id" >> "$GITHUB_OUTPUT"
+          echo "GIST_ID=$id"  >> "$GITHUB_ENV"
+          echo "Parsed GIST_ID: $id"
+
+      - name: Delete Gist after download (optional)
+        if: ${{ secrets.GIST_TOKEN != '' && steps.extract.outputs.gist_id != '' }}
+        run: |
+          curl -s -X DELETE \
+            -H "Authorization: token ${{ secrets.GIST_TOKEN }}" \
+            "https://api.github.com/gists/${{ steps.extract.outputs.gist_id }}" \
+            -o /dev/null -w "%{http_code}\n" || true
+
       - name: Decode -> dist.zip and unzip into docs/
         run: |
           base64 -d dist.zip.b64 > dist.zip
