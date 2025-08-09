@@ -1,9 +1,18 @@
 name: Deploy Pages from artifact (Base64 via Gist)
 
 on:
+  workflow_dispatch:
+    inputs:
+      artifact_url:
+        description: "Raw URL to dist.zip.b64"
+        required: true
+        type: string
+      gist_id:
+        description: "Gist ID (optional; will try to delete)"
+        required: false
+        type: string
   repository_dispatch:
     types: [publish-cohorts]
-  workflow_dispatch:
 
 permissions:
   pages: write
@@ -14,41 +23,39 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Debug payload
+      - name: Resolve inputs/payload
+        id: resolve
         run: |
-          echo "artifact_url: ${{ github.event.client_payload.artifact_url }}"
+          ART="${{ github.event.inputs.artifact_url || github.event.client_payload.artifact_url }}"
+          GID="${{ github.event.inputs.gist_id      || github.event.client_payload.gist_id }}"
+          echo "artifact=$ART" >> "$GITHUB_OUTPUT"
+          echo "gist=$GID"     >> "$GITHUB_OUTPUT"
+          echo "artifact_url: $ART"
+          echo "gist_id: $GID"
 
       - name: Check artifact_url
         run: |
-          test -n "${{ github.event.client_payload.artifact_url }}" \
+          test -n "${{ steps.resolve.outputs.artifact }}" \
             || (echo "::error::artifact_url is empty" && exit 1)
 
       - name: Download Base64 bundle
         run: |
-          curl -fsSL "${{ github.event.client_payload.artifact_url }}" -o dist.zip.b64
+          curl -fsSL "${{ steps.resolve.outputs.artifact }}" -o dist.zip.b64
           test -s dist.zip.b64
 
-      - name: Extract GIST_ID (from payload or URL)
-        id: extract
-        run: |
-          payload_id="${{ github.event.client_payload.gist_id }}"
-          if [ -n "$payload_id" ]; then
-            id="$payload_id"
-          else
-            url="${{ github.event.client_payload.artifact_url }}"
-            id="$(echo "$url" | sed -E 's#https?://gist.githubusercontent.com/([^/]+/)?([0-9a-fA-F]+).*#\2#')"
-          fi
-          echo "gist_id=$id" >> "$GITHUB_OUTPUT"
-          echo "GIST_ID=$id"  >> "$GITHUB_ENV"
-          echo "Parsed GIST_ID: $id"
-
       - name: Delete Gist after download (optional)
-        if: ${{ secrets.GIST_TOKEN != '' && steps.extract.outputs.gist_id != '' }}
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_ID: ${{ steps.resolve.outputs.gist }}
         run: |
-          curl -s -X DELETE \
-            -H "Authorization: token ${{ secrets.GIST_TOKEN }}" \
-            "https://api.github.com/gists/${{ steps.extract.outputs.gist_id }}" \
-            -o /dev/null -w "%{http_code}\n" || true
+          if [ -n "$GIST_TOKEN" ] && [ -n "$GIST_ID" ]; then
+            code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+              -H "Authorization: token $GIST_TOKEN" \
+              "https://api.github.com/gists/$GIST_ID")
+            echo "Gist delete HTTP $code"
+          else
+            echo "Skipping gist delete."
+          fi
 
       - name: Decode -> dist.zip and unzip into docs/
         run: |
@@ -56,20 +63,11 @@ jobs:
           rm -rf docs
           mkdir -p docs
           unzip -q dist.zip -d docs
-
-      - name: Add .nojekyll and minimal index.html
-        run: |
           touch docs/.nojekyll
           if [ ! -f docs/index.html ]; then
-            cat > docs/index.html <<'HTML'
-          <!doctype html><meta charset="utf-8"><title>Diamonds Config CDN</title>
-          <p>OK.</p>
-          HTML
+            printf '<!doctype html><meta charset="utf-8"><title>Diamonds Config CDN</title><p>OK.</p>' > docs/index.html
           fi
-
-      - name: Show files to be deployed
-        run: |
-          echo "---- tree docs (max 2 levels) ----"
+          echo "---- files in docs ----"
           find docs -maxdepth 2 -type f -print
 
       - name: Upload Pages artifact
