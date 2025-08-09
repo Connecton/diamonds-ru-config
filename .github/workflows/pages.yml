@@ -1,4 +1,4 @@
-name: Deploy Pages from artifact
+name: Deploy Pages from artifact (Base64 via Gist)
 
 on:
   repository_dispatch:
@@ -14,12 +14,27 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Download ZIP from Repo A payload
+      - name: Debug payload
         run: |
-          curl -fsSL "${{ github.event.client_payload.artifact_url }}" -o dist.zip
+          echo "client_payload:" 
+          cat "$GITHUB_EVENT_PATH"
+          echo "artifact_url: ${{ github.event.client_payload.artifact_url }}"
 
-      - name: Unzip into docs/
+      - name: Check artifact_url
         run: |
+          if [ -z "${{ github.event.client_payload.artifact_url }}" ]; then
+            echo "::error::artifact_url is empty; ensure Repo A sends repository_dispatch with client_payload.artifact_url"
+            exit 1
+          fi
+
+      - name: Download Base64 bundle
+        run: |
+          curl -fsSL "${{ github.event.client_payload.artifact_url }}" -o dist.zip.b64
+          test -s dist.zip.b64
+
+      - name: Decode -> dist.zip and unzip into docs/
+        run: |
+          base64 -d dist.zip.b64 > dist.zip
           rm -rf docs
           mkdir -p docs
           unzip -q dist.zip -d docs
