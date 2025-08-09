@@ -22,6 +22,9 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+
     steps:
       - name: Resolve inputs/payload
         id: resolve
